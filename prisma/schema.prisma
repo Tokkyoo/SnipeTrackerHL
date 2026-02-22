@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  hashedPassword String
+  name           String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  settings       UserSettings?
+  trackedWallets TrackedWallet[]
+}
+
+model UserSettings {
+  id               String @id @default(cuid())
+  userId           String @unique
+  user             User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ratio            Float  @default(0.2)
+  notionalCap      Float  @default(200)
+  maxLeverage      Float  @default(5)
+  maxTotalNotional Float  @default(2000)
+  copyMode         String @default("entry-only")
+  tif              String @default("IOC")
+  cooldownMs       Int    @default(2000)
+}
+
+model TrackedWallet {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address   String
+  nickname  String?
+  createdAt DateTime @default(now())
+
+  @@unique([userId, address])
+  @@index([userId])
+}

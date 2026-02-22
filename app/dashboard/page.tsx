@@ -1,22 +1,22 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import io from 'socket.io-client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  TrendingUp, TrendingDown, Search, Filter, Trash2, Play, Pause, Users,
-  X, Edit, Trash, Radio, ArrowUpRight, ArrowDownRight, DollarSign,
-  BarChart3, Percent, Layers, ExternalLink, Copy, Check, Zap,
-  ChevronDown, ChevronUp, Clock, Volume2, VolumeX
+  TrendingUp, TrendingDown, Search, Filter, Trash2, Users,
+  X, Trash, Radio, ArrowUpRight, ArrowDownRight, DollarSign,
+  Percent, Layers, ExternalLink, Copy, Check,
+  ChevronDown, ChevronUp, Volume2, VolumeX
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { usePositions } from '@/hooks/use-positions';
+import { useWallets } from '@/hooks/use-wallets';
 
 interface Position {
   coin: string;
@@ -26,6 +26,8 @@ interface Position {
   unrealizedPnl: number;
   returnOnEquity: number;
   leverage: number;
+  traderName?: string;
+  traderAddress?: string;
 }
 
 interface FeedEvent {
@@ -36,170 +38,142 @@ interface FeedEvent {
   market: string;
   side: 'buy' | 'sell';
   qty: number;
-  price?: number;
   notionalUsd: number;
-  source?: string;
-  isPro?: boolean;
-  previousSize?: number;
-  newSize?: number;
-}
-
-interface Stats {
-  totalPositions: number;
-  totalValue: number;
-  totalPnl: number;
-  avgRoe: number;
 }
 
 export default function DashboardPage() {
-  const [positions, setPositions] = useState<Position[]>([]);
+  const { allPositions, isLive } = usePositions(3000);
+  const { wallets, addWallet, removeWallet } = useWallets();
+  const positions: Position[] = allPositions;
+
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
-  const [filteredEvents, setFilteredEvents] = useState<FeedEvent[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [marketFilter, setMarketFilter] = useState('');
   const [sideFilter, setSideFilter] = useState<'' | 'buy' | 'sell'>('');
-  const [isPaused, setIsPaused] = useState(false);
   const [isWalletsOpen, setIsWalletsOpen] = useState(false);
-  const [wallets, setWallets] = useState<{address: string, nickname?: string}[]>([]);
   const [newWalletAddress, setNewWalletAddress] = useState('');
   const [newWalletNickname, setNewWalletNickname] = useState('');
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [positionSort, setPositionSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'positionValue', dir: 'desc' });
-  const [stats, setStats] = useState<Stats>({
-    totalPositions: 0,
-    totalValue: 0,
-    totalPnl: 0,
-    avgRoe: 0,
-  });
-  const [connected, setConnected] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [, setTick] = useState(0);
   const feedRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const prevPositionsRef = useRef<Map<string, Position>>(new Map());
+
+  const connected = isLive;
+
+  const stats = useMemo(() => {
+    const totalValue = positions.reduce((sum, p) => sum + Math.abs(p.positionValue), 0);
+    const totalPnl = positions.reduce((sum, p) => sum + p.unrealizedPnl, 0);
+    const avgRoe = positions.length > 0
+      ? positions.reduce((sum, p) => sum + p.returnOnEquity, 0) / positions.length
+      : 0;
+    return { totalPositions: positions.length, totalValue, totalPnl, avgRoe };
+  }, [positions]);
 
   const playSound = useCallback((side: 'buy' | 'sell') => {
     if (!soundEnabled) return;
     try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
-      }
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume();
-
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
       gain.connect(ctx.destination);
-
       if (side === 'buy') {
         osc.frequency.setValueAtTime(880, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.08);
-        osc.type = 'sine';
       } else {
         osc.frequency.setValueAtTime(520, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(340, ctx.currentTime + 0.1);
-        osc.type = 'sine';
       }
-
+      osc.type = 'sine';
       gain.gain.setValueAtTime(0.12, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.15);
-    } catch {
-      // Audio not available
-    }
+    } catch { /* Audio not available */ }
   }, [soundEnabled]);
 
+  // Detect position changes and generate feed events
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTick(prev => prev + 1);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const socket = io('http://localhost:3001');
-
-    socket.on('connect', () => {
-      setConnected(true);
-    });
-
-    socket.on('disconnect', () => {
-      setConnected(false);
-    });
-
-    loadWallets();
-
-    socket.on('initialFeed', (events: FeedEvent[]) => {
-      setFeedEvents(events);
-    });
-
-    socket.on('positions', (data: Position[]) => {
-      setPositions(data);
-      const totalValue = data.reduce((sum, p) => sum + Math.abs(p.positionValue), 0);
-      const totalPnl = data.reduce((sum, p) => sum + p.unrealizedPnl, 0);
-      const avgRoe = data.length > 0
-        ? data.reduce((sum, p) => sum + p.returnOnEquity, 0) / data.length
-        : 0;
-      setStats({ totalPositions: data.length, totalValue, totalPnl, avgRoe });
-    });
-
-    socket.on('feedEvent', (event: FeedEvent) => {
-      if (!isPaused) {
-        setFeedEvents((prev) => [event, ...prev].slice(0, 500));
-        playSound(event.side);
-      }
-    });
-
-    socket.on('feedCleared', () => {
-      setFeedEvents([]);
-    });
-
-    return () => { socket.disconnect(); };
-  }, [isPaused, playSound]);
-
-  const loadWallets = async () => {
-    try {
-      const response = await fetch('http://localhost:3001/api/leaders');
-      const data = await response.json();
-      const walletsData = (data.leaders || []).map((addr: string) => ({
-        address: addr,
-        nickname: data.nicknames?.[addr]
-      }));
-      setWallets(walletsData);
-    } catch (error) {
-      console.error('Failed to load wallets:', error);
+    const currentMap = new Map<string, Position>();
+    for (const pos of positions) {
+      const key = `${pos.traderAddress || 'unknown'}-${pos.coin}`;
+      currentMap.set(key, pos);
     }
-  };
+
+    const prevMap = prevPositionsRef.current;
+    const newEvents: FeedEvent[] = [];
+
+    for (const [key, pos] of currentMap) {
+      const prev = prevMap.get(key);
+      if (!prev) {
+        newEvents.push({
+          id: `${key}-${Date.now()}`,
+          ts: Date.now(),
+          traderName: pos.traderName || 'Unknown',
+          traderAddress: pos.traderAddress,
+          market: `${pos.coin}-PERP`,
+          side: pos.size > 0 ? 'buy' : 'sell',
+          qty: Math.abs(pos.size),
+          notionalUsd: Math.abs(pos.positionValue),
+        });
+      } else if (Math.abs(pos.size - prev.size) > 0.0001) {
+        const sizeChange = pos.size - prev.size;
+        newEvents.push({
+          id: `${key}-${Date.now()}`,
+          ts: Date.now(),
+          traderName: pos.traderName || 'Unknown',
+          traderAddress: pos.traderAddress,
+          market: `${pos.coin}-PERP`,
+          side: sizeChange > 0 ? 'buy' : 'sell',
+          qty: Math.abs(sizeChange),
+          notionalUsd: Math.abs(sizeChange * pos.entryPx),
+        });
+      }
+    }
+
+    for (const [key, prev] of prevMap) {
+      if (!currentMap.has(key)) {
+        newEvents.push({
+          id: `${key}-close-${Date.now()}`,
+          ts: Date.now(),
+          traderName: prev.traderName || 'Unknown',
+          traderAddress: prev.traderAddress,
+          market: `${prev.coin}-PERP`,
+          side: prev.size > 0 ? 'sell' : 'buy',
+          qty: Math.abs(prev.size),
+          notionalUsd: Math.abs(prev.positionValue),
+        });
+      }
+    }
+
+    if (newEvents.length > 0 && prevMap.size > 0) {
+      setFeedEvents(prev => [...newEvents, ...prev].slice(0, 500));
+      newEvents.forEach(e => playSound(e.side));
+    }
+
+    prevPositionsRef.current = currentMap;
+  }, [positions, playSound]);
 
   const handleAddWallet = async () => {
     if (!newWalletAddress.trim()) return;
     try {
-      const response = await fetch('http://localhost:3001/api/leaders/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          address: newWalletAddress.trim(),
-          nickname: newWalletNickname.trim() || undefined
-        })
-      });
-      if (response.ok) {
-        setNewWalletAddress('');
-        setNewWalletNickname('');
-        await loadWallets();
-      }
+      await addWallet(newWalletAddress.trim(), newWalletNickname.trim() || undefined);
+      setNewWalletAddress('');
+      setNewWalletNickname('');
     } catch (error) {
       console.error('Failed to add wallet:', error);
     }
   };
 
-  const handleRemoveWallet = async (address: string) => {
+  const handleRemoveWallet = async (id: string) => {
     if (!confirm('Remove this wallet?')) return;
     try {
-      const response = await fetch(`http://localhost:3001/api/leaders/${address}`, { method: 'DELETE' });
-      if (response.ok) await loadWallets();
+      await removeWallet(id);
     } catch (error) {
       console.error('Failed to remove wallet:', error);
     }
@@ -211,7 +185,7 @@ export default function DashboardPage() {
     setTimeout(() => setCopiedAddress(null), 2000);
   };
 
-  useEffect(() => {
+  const filteredEvents = useMemo(() => {
     let filtered = feedEvents;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
@@ -228,7 +202,7 @@ export default function DashboardPage() {
     if (sideFilter) {
       filtered = filtered.filter(event => event.side === sideFilter);
     }
-    setFilteredEvents(filtered);
+    return filtered;
   }, [feedEvents, searchTerm, marketFilter, sideFilter]);
 
   const getTimeAgo = (timestamp: number) => {
@@ -239,8 +213,7 @@ export default function DashboardPage() {
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+    return `${Math.floor(hours / 24)}d ago`;
   };
 
   const formatNumber = (num: number) => {
@@ -255,15 +228,8 @@ export default function DashboardPage() {
     return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
-  const handleClearFeed = async () => {
-    if (confirm('Clear all events?')) {
-      try {
-        await fetch('http://localhost:3001/api/feed/clear', { method: 'POST' });
-        setFeedEvents([]);
-      } catch (error) {
-        console.error('Failed to clear feed:', error);
-      }
-    }
+  const handleClearFeed = () => {
+    if (confirm('Clear all events?')) setFeedEvents([]);
   };
 
   const sortedPositions = (list: Position[]) => {
@@ -307,17 +273,11 @@ export default function DashboardPage() {
               <div>
                 <h1 className="text-2xl font-bold tracking-tight">Live Feed</h1>
                 <p className="text-sm text-muted-foreground">
-                  {connected ? 'Streaming real-time trades' : 'Connecting...'}
-                  {isPaused && ' — Paused'}
+                  {connected ? 'Polling every 3s' : 'Connecting...'}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {isPaused && (
-                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/30 gap-1.5">
-                  <Pause className="h-3 w-3" /> Paused
-                </Badge>
-              )}
               <Badge variant="outline" className="tabular-nums gap-1.5">
                 <Layers className="h-3 w-3" />
                 {filteredEvents.length} events
@@ -329,15 +289,6 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center rounded-lg border bg-card p-1 gap-1">
               <Button
-                variant={isPaused ? "default" : "ghost"}
-                onClick={() => setIsPaused(!isPaused)}
-                size="sm"
-                className="gap-1.5 h-8"
-              >
-                {isPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-                {isPaused ? 'Resume' : 'Pause'}
-              </Button>
-              <Button
                 variant="ghost"
                 onClick={handleClearFeed}
                 size="sm"
@@ -348,7 +299,7 @@ export default function DashboardPage() {
               </Button>
               <div className="w-px h-5 bg-border" />
               <Button
-                variant={soundEnabled ? "ghost" : "ghost"}
+                variant="ghost"
                 onClick={() => setSoundEnabled(!soundEnabled)}
                 size="sm"
                 className={`gap-1.5 h-8 ${soundEnabled ? 'text-foreground' : 'text-muted-foreground'}`}
@@ -379,9 +330,7 @@ export default function DashboardPage() {
             >
               <Filter className="h-3.5 w-3.5" />
               Filters
-              {hasActiveFilters && (
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-              )}
+              {hasActiveFilters && <div className="w-1.5 h-1.5 rounded-full bg-primary" />}
             </Button>
 
             <div className="flex-1" />
@@ -426,10 +375,8 @@ export default function DashboardPage() {
                       onClick={() => setSideFilter(side)}
                       className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                         sideFilter === side
-                          ? side === 'buy'
-                            ? 'bg-green-500/20 text-green-400'
-                            : side === 'sell'
-                              ? 'bg-red-500/20 text-red-400'
+                          ? side === 'buy' ? 'bg-green-500/20 text-green-400'
+                            : side === 'sell' ? 'bg-red-500/20 text-red-400'
                               : 'bg-secondary text-foreground'
                           : 'text-muted-foreground hover:text-foreground'
                       }`}
@@ -526,7 +473,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <CardTitle className="text-base">Trade Activity</CardTitle>
-                  {connected && !isPaused && (
+                  {connected && (
                     <div className="flex items-center gap-1.5 text-xs text-green-400">
                       <div className="w-1.5 h-1.5 rounded-full bg-green-400 live-dot" />
                       LIVE
@@ -550,7 +497,7 @@ export default function DashboardPage() {
                     </p>
                     <p className="text-xs text-muted-foreground/60 mt-1">
                       {feedEvents.length === 0
-                        ? 'New trades will appear here in real-time'
+                        ? 'Add wallets and position changes will appear here'
                         : 'Try adjusting your search or filters'
                       }
                     </p>
@@ -559,10 +506,6 @@ export default function DashboardPage() {
                   filteredEvents.map((event, idx) => {
                     const market = event.market.split('-')[0];
                     const isBuy = event.side === 'buy';
-                    const isModification = event.previousSize !== undefined && event.newSize !== undefined;
-                    const qty = isModification
-                      ? Math.abs((event.newSize || 0) - (event.previousSize || 0))
-                      : event.qty;
                     const isNew = idx === 0;
 
                     return (
@@ -570,11 +513,8 @@ export default function DashboardPage() {
                         key={event.id}
                         className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg border border-transparent hover:border-border/50 hover:bg-accent/30 transition-all ${isNew ? 'feed-event-enter' : ''}`}
                       >
-                        {/* Side indicator */}
                         <div className="flex-shrink-0">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                            isBuy ? 'bg-green-500/10' : 'bg-red-500/10'
-                          }`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isBuy ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
                             {isBuy
                               ? <ArrowUpRight className="h-4 w-4 text-green-400" />
                               : <ArrowDownRight className="h-4 w-4 text-red-400" />
@@ -582,9 +522,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        {/* Main content */}
                         <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                          {/* Trader */}
                           {event.traderAddress ? (
                             <a
                               href={`https://hypurrscan.io/address/${event.traderAddress}#txs`}
@@ -599,38 +537,22 @@ export default function DashboardPage() {
                             <span className="font-medium text-sm truncate max-w-[140px]">{event.traderName}</span>
                           )}
 
-                          {/* Action */}
                           <span className={`text-xs font-medium ${isBuy ? 'text-green-400' : 'text-red-400'}`}>
                             {isBuy ? 'bought' : 'sold'}
                           </span>
 
-                          {/* Quantity */}
-                          <span className="font-semibold text-sm tabular-nums">{formatNumber(qty)}</span>
+                          <span className="font-semibold text-sm tabular-nums">{formatNumber(event.qty)}</span>
 
-                          {/* Market badge */}
                           <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5 font-mono">
                             {market}
                           </Badge>
-
-                          {/* Price */}
-                          {event.price && (
-                            <>
-                              <span className="text-muted-foreground text-xs">@</span>
-                              <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                                ${event.price.toFixed(2)}
-                              </span>
-                            </>
-                          )}
                         </div>
 
-                        {/* Right side info */}
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          {/* Notional */}
                           <span className="font-semibold text-sm tabular-nums text-purple-400">
                             {formatCurrency(event.notionalUsd)}
                           </span>
 
-                          {/* Side badge */}
                           <Badge
                             variant="outline"
                             className={`text-[10px] px-1.5 py-0 h-5 font-semibold border ${
@@ -642,14 +564,6 @@ export default function DashboardPage() {
                             {isBuy ? 'LONG' : 'SHORT'}
                           </Badge>
 
-                          {event.isPro && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-yellow-400 border-yellow-500/30 bg-yellow-500/5">
-                              <Zap className="h-2.5 w-2.5 mr-0.5" />
-                              PRO
-                            </Badge>
-                          )}
-
-                          {/* Timestamp */}
                           <span className="text-[11px] text-muted-foreground tabular-nums min-w-[52px] text-right">
                             {getTimeAgo(event.ts)}
                           </span>
@@ -697,10 +611,7 @@ export default function DashboardPage() {
           </Tabs>
 
           {/* Manage Wallets Dialog */}
-          <Dialog open={isWalletsOpen} onOpenChange={(open) => {
-            setIsWalletsOpen(open);
-            if (open) loadWallets();
-          }}>
+          <Dialog open={isWalletsOpen} onOpenChange={setIsWalletsOpen}>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -708,12 +619,11 @@ export default function DashboardPage() {
                   Manage Wallets
                 </DialogTitle>
                 <DialogDescription>
-                  Follow trader wallets to copy their positions
+                  Track trader wallets to monitor their positions
                 </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4 mt-2">
-                {/* Add form */}
                 <div className="space-y-3 p-4 rounded-lg border-2 border-dashed border-border/50">
                   <Input
                     placeholder="0x... wallet address"
@@ -739,14 +649,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Wallet list */}
                 <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
                   {wallets.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-6">No wallets yet</p>
                   ) : (
                     wallets.map((wallet) => (
                       <div
-                        key={wallet.address}
+                        key={wallet.id}
                         className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/30 transition-colors group"
                       >
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -785,7 +694,7 @@ export default function DashboardPage() {
                           variant="ghost"
                           size="sm"
                           className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => handleRemoveWallet(wallet.address)}
+                          onClick={() => handleRemoveWallet(wallet.id)}
                         >
                           <Trash className="h-3.5 w-3.5" />
                         </Button>
@@ -833,6 +742,7 @@ function PositionsTable({ positions, sort, onSort }: {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent border-border/50">
+            <TableHead className="text-xs">Trader</TableHead>
             <TableHead className="text-xs">Coin</TableHead>
             <TableHead className="text-xs cursor-pointer select-none" onClick={() => onSort('size')}>
               Size <SortIcon col="size" />
@@ -853,6 +763,11 @@ function PositionsTable({ positions, sort, onSort }: {
         <TableBody>
           {positions.map((pos, idx) => (
             <TableRow key={idx} className="border-border/30 hover:bg-accent/20">
+              <TableCell className="py-2.5">
+                <span className="text-xs text-muted-foreground truncate max-w-[100px] block">
+                  {pos.traderName || '-'}
+                </span>
+              </TableCell>
               <TableCell className="py-2.5">
                 <div className="flex items-center gap-2">
                   <div className={`w-1.5 h-1.5 rounded-full ${pos.size > 0 ? 'bg-green-400' : 'bg-red-400'}`} />

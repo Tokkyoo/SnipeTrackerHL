@@ -4,31 +4,21 @@ import { useState } from 'react';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Wallet, Plus, Copy, ExternalLink, Check } from 'lucide-react';
-
-interface WalletData {
-  address: string;
-  name: string;
-  balance: number;
-  connected: boolean;
-}
+import { Input } from '@/components/ui/input';
+import { Wallet, Plus, Copy, ExternalLink, Check, Trash2, Loader2 } from 'lucide-react';
+import { useWallets } from '@/hooks/use-wallets';
+import { usePositions } from '@/hooks/use-positions';
 
 export default function WalletsPage() {
-  const [connected] = useState(false);
+  const { wallets, addWallet, removeWallet, isLoading } = useWallets();
+  const { isLive } = usePositions(5000);
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
-  
-  // Mock data - À remplacer par les vraies données
-  const wallets: WalletData[] = [
-    {
-      address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-      name: 'Trading Wallet',
-      balance: 5420.50,
-      connected: true,
-    },
-  ];
+  const [newAddress, setNewAddress] = useState('');
+  const [newNickname, setNewNickname] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState('');
 
   const copyToClipboard = (address: string) => {
     navigator.clipboard.writeText(address);
@@ -40,74 +30,116 @@ export default function WalletsPage() {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
+  const handleAdd = async () => {
+    if (!newAddress.trim()) return;
+    setAdding(true);
+    setError('');
+    try {
+      await addWallet(newAddress.trim(), newNickname.trim() || undefined);
+      setNewAddress('');
+      setNewNickname('');
+    } catch (err: any) {
+      setError(err.message || 'Failed to add wallet');
+    }
+    setAdding(false);
+  };
+
+  const handleRemove = async (id: string) => {
+    if (!confirm('Remove this tracked wallet?')) return;
+    try {
+      await removeWallet(id);
+    } catch {
+      console.error('Failed to remove wallet');
+    }
+  };
+
   return (
     <>
-      <DashboardNav connected={connected} />
+      <DashboardNav connected={isLive} />
       <div className="ml-64 min-h-screen p-8 bg-background">
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Wallets</h1>
-              <p className="text-muted-foreground">Manage your trading wallets and balances</p>
-            </div>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Wallet
-            </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Tracked Wallets</h1>
+            <p className="text-muted-foreground">Manage the trader wallets you are tracking</p>
           </div>
 
-          {/* Balance Overview */}
-          <div className="grid md:grid-cols-3 gap-6">
+          {/* Stats */}
+          <div className="grid md:grid-cols-2 gap-6">
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Total Balance</CardDescription>
+                <CardDescription>Total Tracked</CardDescription>
                 <CardTitle className="text-3xl text-blue-500">
-                  ${wallets.reduce((sum, w) => sum + w.balance, 0).toFixed(2)}
+                  {wallets.length}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Across all wallets</p>
+                <p className="text-xs text-muted-foreground">Wallets being monitored</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Active Wallets</CardDescription>
+                <CardDescription>Status</CardDescription>
                 <CardTitle className="text-3xl text-green-500">
-                  {wallets.filter(w => w.connected).length}
+                  {isLive ? 'Active' : 'Offline'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-xs text-muted-foreground">Connected and ready</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Available to Trade</CardDescription>
-                <CardTitle className="text-3xl text-purple-500">
-                  ${wallets.reduce((sum, w) => w.connected ? sum + w.balance : sum, 0).toFixed(2)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-muted-foreground">In connected wallets</p>
+                <p className="text-xs text-muted-foreground">Polling every 3 seconds</p>
               </CardContent>
             </Card>
           </div>
+
+          {/* Add Wallet */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Add Wallet</CardTitle>
+              <CardDescription>Enter a Hyperliquid wallet address to start tracking</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3">
+                <Input
+                  placeholder="0x... wallet address"
+                  value={newAddress}
+                  onChange={(e) => setNewAddress(e.target.value)}
+                  className="font-mono flex-1"
+                />
+                <Input
+                  placeholder="Nickname (optional)"
+                  value={newNickname}
+                  onChange={(e) => setNewNickname(e.target.value)}
+                  className="w-48"
+                />
+                <Button onClick={handleAdd} disabled={!newAddress.trim() || adding}>
+                  {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                  {adding ? '' : 'Add'}
+                </Button>
+              </div>
+              {error && (
+                <Alert variant="destructive" className="mt-3">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Wallets Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Your Wallets</CardTitle>
-              <CardDescription>Manage and monitor your connected wallets</CardDescription>
+              <CardTitle>Your Tracked Wallets</CardTitle>
+              <CardDescription>Manage wallets you are monitoring on Hyperliquid</CardDescription>
             </CardHeader>
             <CardContent>
-              {wallets.length === 0 ? (
+              {isLoading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                </div>
+              ) : wallets.length === 0 ? (
                 <Alert>
                   <Wallet className="h-4 w-4" />
                   <AlertDescription>
-                    No wallets connected. Add a wallet to start trading.
+                    No wallets tracked yet. Add a wallet address above to get started.
                   </AlertDescription>
                 </Alert>
               ) : (
@@ -115,17 +147,18 @@ export default function WalletsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Name</TableHead>
+                        <TableHead>Nickname</TableHead>
                         <TableHead>Address</TableHead>
-                        <TableHead>Balance</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>Added</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {wallets.map((wallet, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell className="font-medium">{wallet.name}</TableCell>
+                      {wallets.map((wallet) => (
+                        <TableRow key={wallet.id}>
+                          <TableCell className="font-medium">
+                            {wallet.nickname || '-'}
+                          </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <code className="text-sm bg-secondary px-2 py-1 rounded">
@@ -145,21 +178,32 @@ export default function WalletsPage() {
                               </Button>
                             </div>
                           </TableCell>
-                          <TableCell className="font-semibold">
-                            ${wallet.balance.toFixed(2)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={wallet.connected ? 'default' : 'secondary'}>
-                              {wallet.connected ? 'Connected' : 'Disconnected'}
-                            </Badge>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(wallet.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button variant="ghost" size="sm">
-                                View Details
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                asChild
+                              >
+                                <a
+                                  href={`https://hypurrscan.io/address/${wallet.address}#txs`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <ExternalLink className="h-4 w-4" />
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleRemove(wallet.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -169,28 +213,6 @@ export default function WalletsPage() {
                   </Table>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="outline">
-                  <Wallet className="h-4 w-4 mr-2" />
-                  Connect Wallet
-                </Button>
-                <Button variant="outline">
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  View on Explorer
-                </Button>
-                <Button variant="outline">
-                  Export Addresses
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>

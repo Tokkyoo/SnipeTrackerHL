@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Activity, Wallet, Settings, BarChart3, TrendingUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Activity, Wallet, Settings, BarChart3, TrendingUp, LogOut, User } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 const navItems = [
@@ -12,25 +14,21 @@ const navItems = [
     title: 'Live Feed',
     href: '/dashboard',
     icon: Activity,
-    description: 'Real-time trading feed',
   },
   {
     title: 'Manage',
     href: '/dashboard/manage',
     icon: Settings,
-    description: 'Configure bot settings',
   },
   {
     title: 'Wallets',
     href: '/dashboard/wallets',
     icon: Wallet,
-    description: 'Manage your wallets',
   },
   {
     title: 'Analytics',
     href: '/dashboard/analytics',
     icon: BarChart3,
-    description: 'Performance analytics',
     badge: 'Soon',
   },
 ];
@@ -41,6 +39,7 @@ interface DashboardNavProps {
 
 export function DashboardNav({ connected = false }: DashboardNavProps) {
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r bg-background">
@@ -55,8 +54,8 @@ export function DashboardNav({ connected = false }: DashboardNavProps) {
 
         {/* Connection Status */}
         <div className="px-4 py-2">
-          <Badge 
-            variant={connected ? 'default' : 'destructive'} 
+          <Badge
+            variant={connected ? 'default' : 'destructive'}
             className="w-full justify-center gap-2"
           >
             <div className={cn(
@@ -74,7 +73,7 @@ export function DashboardNav({ connected = false }: DashboardNavProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
-            
+
             return (
               <Link
                 key={item.href}
@@ -99,11 +98,34 @@ export function DashboardNav({ connected = false }: DashboardNavProps) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="border-t p-4">
-          <p className="text-xs text-muted-foreground text-center">
-            v1.0.0 • Copy Trading Bot
-          </p>
+        {/* User Info + Sign Out */}
+        <div className="border-t p-4 space-y-3">
+          {session?.user && (
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <User className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {session.user.name || session.user.email}
+                </p>
+                {session.user.name && (
+                  <p className="text-xs text-muted-foreground truncate">
+                    {session.user.email}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
+            onClick={() => signOut({ callbackUrl: '/login' })}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </Button>
         </div>
       </div>
     </aside>
