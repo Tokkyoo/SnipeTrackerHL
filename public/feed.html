@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Feed - Copy Trading</title>
+    <link rel="stylesheet" href="feed.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>📡 Live Feed</h1>
+                <div class="status-indicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="stat-box">
+                    <span class="stat-label">Total</span>
+                    <span class="stat-value" id="totalEvents">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Controls -->
+        <div class="controls-bar">
+            <div class="controls-left">
+                <button class="btn btn-primary" id="pauseBtn">
+                    <span id="pauseIcon">⏸️</span>
+                    <span id="pauseText">Pause</span>
+                </button>
+                <button class="btn btn-secondary" id="clearBtn">🗑️ Clear</button>
+                <button class="btn btn-success" id="manageLeadersBtn">👥 Manage Wallets</button>
+            </div>
+            
+            <div class="controls-right">
+                <!-- Search -->
+                <div class="search-box">
+                    <input 
+                        type="text" 
+                        id="searchInput" 
+                        placeholder="Search trader or address..."
+                        class="search-input"
+                    />
+                    <span class="search-icon">🔍</span>
+                </div>
+
+                <!-- Filters -->
+                <div class="market-filter-wrapper">
+                    <input type="text" id="marketSearch" class="filter-select" placeholder="Search markets..." autocomplete="off">
+                    <select id="marketFilter" class="filter-select" style="display: none;">
+                        <option value="">All Markets</option>
+                        <option value="BTC">BTC</option>
+                        <option value="ETH">ETH</option>
+                        <option value="SOL">SOL</option>
+                        <option value="HYPE">HYPE</option>
+                        <option value="AVAX">AVAX</option>
+                        <option value="DOGE">DOGE</option>
+                        <option value="SUI">SUI</option>
+                        <option value="kPEPE">kPEPE</option>
+                        <option value="APT">APT</option>
+                        <option value="SEI">SEI</option>
+                        <option value="kBONK">kBONK</option>
+                        <option value="ENA">ENA</option>
+                        <option value="POPCAT">POPCAT</option>
+                        <option value="EIGEN">EIGEN</option>
+                        <option value="GOAT">GOAT</option>
+                        <option value="MOODENG">MOODENG</option>
+                        <option value="GRASS">GRASS</option>
+                        <option value="VIRTUAL">VIRTUAL</option>
+                        <option value="FARTCOIN">FARTCOIN</option>
+                        <option value="BERA">BERA</option>
+                        <option value="RESOLV">RESOLV</option>
+                        <option value="ZEC">ZEC</option>
+                        <option value="LIT">LIT</option>
+                        <option value="XRP">XRP</option>
+                        <option value="ADA">ADA</option>
+                        <option value="LINK">LINK</option>
+                        <option value="DOT">DOT</option>
+                        <option value="MATIC">MATIC</option>
+                        <option value="UNI">UNI</option>
+                        <option value="ATOM">ATOM</option>
+                        <option value="LTC">LTC</option>
+                        <option value="BCH">BCH</option>
+                        <option value="NEAR">NEAR</option>
+                        <option value="ARB">ARB</option>
+                        <option value="OP">OP</option>
+                        <option value="INJ">INJ</option>
+                        <option value="TIA">TIA</option>
+                        <option value="WLD">WLD</option>
+                        <option value="BLUR">BLUR</option>
+                        <option value="MKR">MKR</option>
+                        <option value="FTM">FTM</option>
+                        <option value="RUNE">RUNE</option>
+                        <option value="AAVE">AAVE</option>
+                        <option value="CRV">CRV</option>
+                        <option value="SNX">SNX</option>
+                        <option value="COMP">COMP</option>
+                        <option value="SUSHI">SUSHI</option>
+                        <option value="WOO">WOO</option>
+                        <option value="GMX">GMX</option>
+                        <option value="PEPE">PEPE</option>
+                        <option value="SHIB">SHIB</option>
+                        <option value="FLR">FLR</option>
+                        <option value="MEME">MEME</option>
+                        <option value="ORDI">ORDI</option>
+                        <option value="JUP">JUP</option>
+                        <option value="PYTH">PYTH</option>
+                        <option value="JTO">JTO</option>
+                        <option value="DYM">DYM</option>
+                        <option value="ALT">ALT</option>
+                        <option value="STRK">STRK</option>
+                        <option value="W">W</option>
+                        <option value="ONDO">ONDO</option>
+                        <option value="PENDLE">PENDLE</option>
+                        <option value="BONK">BONK</option>
+                        <option value="WIF">WIF</option>
+                        <option value="TNSR">TNSR</option>
+                        <option value="ETHFI">ETHFI</option>
+                        <option value="OMNI">OMNI</option>
+                        <option value="TON">TON</option>
+                        <option value="NOT">NOT</option>
+                        <option value="IO">IO</option>
+                        <option value="ZRO">ZRO</option>
+                        <option value="TAO">TAO</option>
+                        <option value="TRUMP">TRUMP</option>
+                        <option value="MEW">MEW</option>
+                        <option value="MOTHER">MOTHER</option>
+                        <option value="LISTA">LISTA</option>
+                    </select>
+                    <div id="marketDropdown" class="market-dropdown"></div>
+                </div>
+
+                <select id="sideFilter" class="filter-select">
+                    <option value="">All Sides</option>
+                    <option value="buy">Buy Only</option>
+                    <option value="sell">Sell Only</option>
+                </select>
+
+                <select id="eventTypeFilter" class="filter-select">
+                    <option value="" selected>All Events</option>
+                    <option value="trades">Trades Only</option>
+                    <option value="modifications">Position Changes</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Feed Container -->
+        <div class="feed-wrapper">
+            <div id="feedContainer" class="feed-container">
+                <!-- Events will be inserted here -->
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-text">Waiting for events...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Managing Leaders -->
+    <div id="leadersModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>👥 Manage Wallets</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Add Leader Form -->
+                <div class="add-leader-form">
+                    <h3>Add New Wallet</h3>
+                    <input 
+                        type="text" 
+                        id="newLeaderAddress" 
+                        placeholder="Wallet address (0x...)"
+                        class="modal-input"
+                    />
+                    <input 
+                        type="text" 
+                        id="newLeaderNickname" 
+                        placeholder="Nickname (optional)"
+                        class="modal-input"
+                    />
+                    <button class="btn btn-success" id="addLeaderBtn">➕ Add Wallet</button>
+                </div>
+
+                <!-- Current Leaders List -->
+                <div class="leaders-list">
+                    <h3>Current Wallets</h3>
+                    <div id="leadersList">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="feed.js"></script>
+</body>
+</html>

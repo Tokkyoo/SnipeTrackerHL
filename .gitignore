@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+state.json
+*.log
+coverage/
+.DS_Store
+.next/
+.claude/

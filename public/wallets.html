@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HyTracker - Wallets Overview</title>
+    <link rel="stylesheet" href="feed.css">
+    <style>
+        /* Navbar Styles */
+        .navbar {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .navbar-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 1.5rem;
+            height: 60px;
+        }
+        
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        
+        .nav-logo {
+            font-size: 1.5rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .nav-link:hover {
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+        
+        .nav-link.active {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-blue);
+        }
+
+        .wallet-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s;
+        }
+
+        .wallet-card:hover {
+            border-color: var(--accent-blue);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+        }
+
+        .wallet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .wallet-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .wallet-nickname {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .wallet-address {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            font-family: 'Courier New', monospace;
+        }
+
+        .wallet-stats {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .wallet-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        .wallet-stat-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .wallet-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 0.25rem;
+        }
+
+        .wallet-stat-value.positive {
+            color: var(--accent-green);
+        }
+
+        .wallet-stat-value.negative {
+            color: var(--accent-red);
+        }
+
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .positions-table thead {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .positions-table th {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s;
+        }
+
+        .positions-table th:hover {
+            color: var(--accent-blue);
+        }
+
+        .positions-table th.sortable {
+            position: relative;
+            padding-right: 2rem;
+        }
+
+        .positions-table th.sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 0.75rem;
+            opacity: 0.3;
+        }
+
+        .positions-table th.sortable.sorted-asc::after {
+            content: '↑';
+            opacity: 1;
+            color: var(--accent-blue);
+        }
+
+        .positions-table th.sortable.sorted-desc::after {
+            content: '↓';
+            opacity: 1;
+            color: var(--accent-blue);
+        }
+
+        .positions-table td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .positions-table td.positive {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .positions-table td.negative {
+            color: var(--accent-red);
+            font-weight: 600;
+        }
+
+        .positions-table tbody tr:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .coin-cell {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .side-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .side-badge.long {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        .side-badge.short {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .no-positions {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .refresh-btn {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            color: var(--accent-blue);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(59, 130, 246, 0.25);
+            border-color: var(--accent-blue);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <div class="nav-brand">
+                <span class="nav-logo">🎯</span>
+                <span class="nav-title">HyTracker</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">📡 Feed</a>
+                <a href="/wallets.html" class="nav-link active">💼 Wallets</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>💼 Wallets Overview</h1>
+            </div>
+            <div class="header-right">
+                <button class="refresh-btn" id="refreshBtn">🔄 Refresh</button>
+            </div>
+        </header>
+
+        <!-- Wallets Container -->
+        <div id="walletsContainer">
+            <div class="loading">
+                <p>Loading wallets data...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const walletsContainer = document.getElementById('walletsContainer');
+        const refreshBtn = document.getElementById('refreshBtn');
+        
+        let leadersDataCache = [];
+        let sortState = {}; // { walletAddress: { column: 'size', direction: 'asc' } }
+
+        // Fetch wallets data
+        async function fetchWalletsData() {
+            try {
+                const response = await fetch('/api/leaders/positions');
+                const data = await response.json();
+                
+                if (!data.leaders || data.leaders.length === 0) {
+                    walletsContainer.innerHTML = '<div class="no-positions"><p>No wallets configured yet.</p></div>';
+                    leadersDataCache = [];
+                    return;
+                }
+                
+                leadersDataCache = data.leaders;
+                
+                // If first load, display everything
+                if (walletsContainer.querySelector('.loading')) {
+                    displayWallets(data.leaders);
+                } else {
+                    // Update existing data without re-rendering
+                    updateWalletsData(data.leaders);
+                }
+            } catch (error) {
+                console.error('Error fetching wallets:', error);
+                walletsContainer.innerHTML = '<div class="no-positions"><p>Error loading wallets data.</p></div>';
+            }
+        }
+
+        function updateWalletsData(leaders) {
+            leaders.forEach(leader => {
+                const walletCard = document.querySelector(`[data-wallet-address="${leader.address}"]`);
+                if (!walletCard) return;
+                
+                // Update total PNL
+                const pnlElement = walletCard.querySelector('.wallet-stat-value.positive, .wallet-stat-value.negative');
+                if (pnlElement) {
+                    const pnlClass = leader.totalPnl >= 0 ? 'positive' : 'negative';
+                    const pnlSign = leader.totalPnl >= 0 ? '+' : '';
+                    pnlElement.className = `wallet-stat-value ${pnlClass}`;
+                    pnlElement.textContent = `${pnlSign}$${formatNumber(leader.totalPnl)}`;
+                }
+                
+                // Update positions
+                leader.positions.forEach((position, index) => {
+                    const row = walletCard.querySelector(`tr[data-position-index="${index}"]`);
+                    if (!row) return;
+                    
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length < 10) return;
+                    
+                    // Update values without recreating elements
+                    cells[3].textContent = `$${formatNumber(position.notionalValue || 0)}`;
+                    cells[5].textContent = `$${formatNumber(position.entryPrice, 4)}`;
+                    cells[6].textContent = `$${formatNumber(position.currentPrice, 4)}`;
+                    
+                    // Update PNL
+                    const pnlClass = position.unrealizedPnl >= 0 ? 'positive' : 'negative';
+                    const pnlSign = position.unrealizedPnl >= 0 ? '+' : '';
+                    cells[7].className = pnlClass;
+                    cells[7].textContent = `${pnlSign}$${formatNumber(position.unrealizedPnl)}`;
+                    
+                    // Update Funding
+                    const fundingValue = -(position.funding || 0);
+                    const fundingClass = fundingValue >= 0 ? 'positive' : 'negative';
+                    const fundingSign = fundingValue >= 0 ? '+' : '-';
+                    cells[8].className = fundingClass;
+                    cells[8].textContent = `${fundingSign}$${formatNumber(Math.abs(fundingValue))}`;
+                    
+                    // Update Liquidation
+                    cells[9].textContent = `$${formatNumber(position.liquidationPx || 0, 4)}`;
+                });
+            });
+        }
+
+        function displayWallets(leaders) {
+            walletsContainer.innerHTML = '';
+            
+            leaders.forEach(leader => {
+                const card = createWalletCard(leader);
+                walletsContainer.appendChild(card);
+            });
+        }
+
+        function createWalletCard(leader) {
+            const card = document.createElement('div');
+            card.className = 'wallet-card';
+            card.setAttribute('data-wallet-address', leader.address);
+            
+            const pnlClass = leader.totalPnl >= 0 ? 'positive' : 'negative';
+            const pnlSign = leader.totalPnl >= 0 ? '+' : '';
+            // Get current sort state for this wallet
+            const currentSort = sortState[leader.address] || { column: null, direction: 'asc' };
+            
+            card.innerHTML = `
+                <div class="wallet-header">
+                    <div class="wallet-info">
+                        <div class="wallet-nickname">${escapeHtml(leader.nickname || 'Unnamed Wallet')}</div>
+                        <div class="wallet-address">${formatAddress(leader.address)}</div>
+                    </div>
+                    <div class="wallet-stats">
+                        <div class="wallet-stat">
+                            <span class="wallet-stat-label">Total PNL</span>
+                            <span class="wallet-stat-value ${pnlClass}">${pnlSign}$${formatNumber(leader.totalPnl)}</span>
+                        </div>
+                        <div class="wallet-stat">
+                            <span class="wallet-stat-label">Positions</span>
+                            <span class="wallet-stat-value">${leader.positionCount}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                ${leader.positions && leader.positions.length > 0 ? `
+                    <table class="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Side</th>
+                                <th class="sortable ${currentSort.column === 'leverage' ? 'sorted-' + currentSort.direction : ''}" data-wallet="${leader.address}" data-sort="leverage">Leverage</th>
+                                <th class="sortable ${currentSort.column === 'value' ? 'sorted-' + currentSort.direction : ''}" data-wallet="${leader.address}" data-sort="value">Value</th>
+                                <th class="sortable ${currentSort.column === 'size' ? 'sorted-' + currentSort.direction : ''}" data-wallet="${leader.address}" data-sort="size">Amount</th>
+                                <th>Entry Price</th>
+                                <th>Price</th>
+                                <th class="sortable ${currentSort.column === 'pnl' ? 'sorted-' + currentSort.direction : ''}" data-wallet="${leader.address}" data-sort="pnl">PNL</th>
+                                <th>Funding</th>
+                                <th>Liquidation</th>
+                            </tr>
+                        </thead>
+                        <tbody data-wallet="${leader.address}">
+                            ${leader.positions.map((pos, index) => createPositionRow(pos, index)).join('')}
+                        </tbody>
+                    </table>
+                ` : '<div class="no-positions"><p>No open positions</p></div>'}
+            `;
+            
+            // Add click handlers for sortable headers
+            const sortableHeaders = card.querySelectorAll('th.sortable');
+            sortableHeaders.forEach(header => {
+                header.addEventListener('click', () => {
+                    const walletAddress = header.dataset.wallet;
+                    const sortColumn = header.dataset.sort;
+                    handleSort(walletAddress, sortColumn);
+                });
+            });
+            
+            return card;
+        }
+
+        function handleSort(walletAddress, column) {
+            const currentSort = sortState[walletAddress] || { column: null, direction: 'asc' };
+            
+            // Toggle direction if same column, otherwise start with asc
+            let newDirection = 'asc';
+            if (currentSort.column === column) {
+                newDirection = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            }
+            
+            sortState[walletAddress] = { column, direction: newDirection };
+            
+            // Find the leader in cache and sort positions
+            const leader = leadersDataCache.find(l => l.address === walletAddress);
+            if (leader && leader.positions) {
+                leader.positions.sort((a, b) => {
+                    let aVal, bVal;
+                    
+                    if (column === 'size') {
+                        aVal = Math.abs(a.size);
+                        bVal = Math.abs(b.size);
+                    } else if (column === 'pnl') {
+                        aVal = a.unrealizedPnl;
+                        bVal = b.unrealizedPnl;
+                    } else if (column === 'value') {
+                        aVal = a.notionalValue || 0;
+                        bVal = b.notionalValue || 0;
+                    } else if (column === 'leverage') {
+                        aVal = parseFloat(a.leverage || '1');
+                        bVal = parseFloat(b.leverage || '1');
+                    }
+                    
+                    if (newDirection === 'asc') {
+                        return aVal - bVal;
+                    } else {
+                        return bVal - aVal;
+                    }
+                });
+                
+                // Re-render wallets
+                displayWallets(leadersDataCache);
+            }
+        }
+
+        function createPositionRow(position, index) {
+            const side = position.size > 0 ? 'long' : 'short';
+            const pnlClass = position.unrealizedPnl >= 0 ? 'positive' : 'negative';
+            const pnlSign = position.unrealizedPnl >= 0 ? '+' : '';
+            const leverage = parseFloat(position.leverage || '1');
+            
+            // Funding is inverted: negative cumFunding from API means you paid, so display as negative
+            const fundingValue = -(position.funding || 0);
+            const fundingClass = fundingValue >= 0 ? 'positive' : 'negative';
+            const fundingSign = fundingValue >= 0 ? '+' : '-';
+            
+            return `
+                <tr data-position-index="${index}">
+                    <td>
+                        <div class="coin-cell">${escapeHtml(position.coin)}</div>
+                    </td>
+                    <td>
+                        <span class="side-badge ${side}">${side}</span>
+                    </td>
+                    <td>${leverage.toFixed(1)}x</td>
+                    <td>$${formatNumber(position.notionalValue || 0)}</td>
+                    <td>${formatNumber(Math.abs(position.size), 4)}</td>
+                    <td>$${formatNumber(position.entryPrice, 4)}</td>
+                    <td>$${formatNumber(position.currentPrice, 4)}</td>
+                    <td class="${pnlClass}">${pnlSign}$${formatNumber(position.unrealizedPnl)}</td>
+                    <td class="${fundingClass}">${fundingSign}$${formatNumber(Math.abs(fundingValue))}</td>
+                    <td>$${formatNumber(position.liquidationPx || 0, 4)}</td>
+                </tr>
+            `;
+        }
+
+        function formatNumber(num, decimals = 2) {
+            return num.toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+
+        function formatAddress(address) {
+            if (!address) return 'Unknown';
+            return `${address.slice(0, 6)}...${address.slice(-4)}`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event listeners
+        refreshBtn.addEventListener('click', fetchWalletsData);
+
+        // Initial load
+        fetchWalletsData();
+
+        // Auto-refresh every 30 seconds
+        setInterval(fetchWalletsData, 30000);
+    </script>
+</body>
+</html>
