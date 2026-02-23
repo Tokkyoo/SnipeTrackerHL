@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getAuthenticatedUser, unauthorized } from '@/lib/auth-helpers';
 import { getPositions, type Position } from '@/lib/hyperliquid';
+import { pollAndDiffWallets } from '@/lib/poll-positions';
 
 export interface WalletPositions {
   walletId: string;
@@ -22,6 +23,13 @@ export async function GET() {
     return NextResponse.json([]);
   }
 
+  // Trigger server-side diffing and event generation (fire-and-forget)
+  const walletIds = wallets.map(w => w.id);
+  pollAndDiffWallets(walletIds).catch(err =>
+    console.error('Background diff error:', err)
+  );
+
+  // Return positions to the client
   const results: WalletPositions[] = await Promise.all(
     wallets.map(async (wallet) => {
       const positions = await getPositions(wallet.address);
