@@ -22,7 +22,11 @@ export function usePositions(refreshInterval = 3000) {
   const { data, error, isLoading, mutate } = useSWR<WalletPositions[]>(
     '/api/positions',
     fetcher,
-    { refreshInterval }
+    {
+      refreshInterval,
+      refreshWhenHidden: true,
+      dedupingInterval: 1000,
+    }
   );
 
   // Flatten all positions across all wallets

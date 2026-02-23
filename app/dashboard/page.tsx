@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -17,6 +17,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { usePositions } from '@/hooks/use-positions';
 import { useWallets } from '@/hooks/use-wallets';
+import { useEvents, FeedEvent } from '@/hooks/use-events';
 
 interface Position {
   coin: string;
@@ -30,23 +31,12 @@ interface Position {
   traderAddress?: string;
 }
 
-interface FeedEvent {
-  id: string;
-  ts: number;
-  traderName: string;
-  traderAddress?: string;
-  market: string;
-  side: 'buy' | 'sell';
-  qty: number;
-  notionalUsd: number;
-}
-
 export default function DashboardPage() {
   const { allPositions, isLive } = usePositions(3000);
   const { wallets, addWallet, removeWallet } = useWallets();
+  const { events: serverEvents } = useEvents(5000);
   const positions: Position[] = allPositions;
 
-  const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [marketFilter, setMarketFilter] = useState('');
   const [sideFilter, setSideFilter] = useState<'' | 'buy' | 'sell'>('');
@@ -59,7 +49,7 @@ export default function DashboardPage() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const feedRef = useRef<HTMLDivElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const prevPositionsRef = useRef<Map<string, Position>>(new Map());
+  const prevEventCountRef = useRef(0);
 
   const connected = isLive;
 
@@ -72,7 +62,7 @@ export default function DashboardPage() {
     return { totalPositions: positions.length, totalValue, totalPnl, avgRoe };
   }, [positions]);
 
-  const playSound = useCallback((side: 'buy' | 'sell') => {
+  const playSound = (side: string) => {
     if (!soundEnabled) return;
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
@@ -95,69 +85,18 @@ export default function DashboardPage() {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.15);
     } catch { /* Audio not available */ }
-  }, [soundEnabled]);
+  };
 
-  // Detect position changes and generate feed events
+  // Play sound when new events arrive from server
   useEffect(() => {
-    const currentMap = new Map<string, Position>();
-    for (const pos of positions) {
-      const key = `${pos.traderAddress || 'unknown'}-${pos.coin}`;
-      currentMap.set(key, pos);
-    }
-
-    const prevMap = prevPositionsRef.current;
-    const newEvents: FeedEvent[] = [];
-
-    for (const [key, pos] of currentMap) {
-      const prev = prevMap.get(key);
-      if (!prev) {
-        newEvents.push({
-          id: `${key}-${Date.now()}`,
-          ts: Date.now(),
-          traderName: pos.traderName || 'Unknown',
-          traderAddress: pos.traderAddress,
-          market: `${pos.coin}-PERP`,
-          side: pos.size > 0 ? 'buy' : 'sell',
-          qty: Math.abs(pos.size),
-          notionalUsd: Math.abs(pos.positionValue),
-        });
-      } else if (Math.abs(pos.size - prev.size) > 0.0001) {
-        const sizeChange = pos.size - prev.size;
-        newEvents.push({
-          id: `${key}-${Date.now()}`,
-          ts: Date.now(),
-          traderName: pos.traderName || 'Unknown',
-          traderAddress: pos.traderAddress,
-          market: `${pos.coin}-PERP`,
-          side: sizeChange > 0 ? 'buy' : 'sell',
-          qty: Math.abs(sizeChange),
-          notionalUsd: Math.abs(sizeChange * pos.entryPx),
-        });
+    if (serverEvents.length > prevEventCountRef.current && prevEventCountRef.current > 0) {
+      const newCount = serverEvents.length - prevEventCountRef.current;
+      for (let i = 0; i < Math.min(newCount, 3); i++) {
+        playSound(serverEvents[i].side);
       }
     }
-
-    for (const [key, prev] of prevMap) {
-      if (!currentMap.has(key)) {
-        newEvents.push({
-          id: `${key}-close-${Date.now()}`,
-          ts: Date.now(),
-          traderName: prev.traderName || 'Unknown',
-          traderAddress: prev.traderAddress,
-          market: `${prev.coin}-PERP`,
-          side: prev.size > 0 ? 'sell' : 'buy',
-          qty: Math.abs(prev.size),
-          notionalUsd: Math.abs(prev.positionValue),
-        });
-      }
-    }
-
-    if (newEvents.length > 0 && prevMap.size > 0) {
-      setFeedEvents(prev => [...newEvents, ...prev].slice(0, 500));
-      newEvents.forEach(e => playSound(e.side));
-    }
-
-    prevPositionsRef.current = currentMap;
-  }, [positions, playSound]);
+    prevEventCountRef.current = serverEvents.length;
+  }, [serverEvents]);
 
   const handleAddWallet = async () => {
     if (!newWalletAddress.trim()) return;
@@ -186,7 +125,7 @@ export default function DashboardPage() {
   };
 
   const filteredEvents = useMemo(() => {
-    let filtered = feedEvents;
+    let filtered = serverEvents;
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(event =>
@@ -203,10 +142,11 @@ export default function DashboardPage() {
       filtered = filtered.filter(event => event.side === sideFilter);
     }
     return filtered;
-  }, [feedEvents, searchTerm, marketFilter, sideFilter]);
+  }, [serverEvents, searchTerm, marketFilter, sideFilter]);
 
-  const getTimeAgo = (timestamp: number) => {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  const getTimeAgo = (timestamp: string | number) => {
+    const ts = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp;
+    const seconds = Math.floor((Date.now() - ts) / 1000);
     if (seconds < 10) return 'just now';
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
@@ -228,8 +168,8 @@ export default function DashboardPage() {
     return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
-  const handleClearFeed = () => {
-    if (confirm('Clear all events?')) setFeedEvents([]);
+  const handleClearFeed = async () => {
+    // Events are now server-side, just clear display isn't needed
   };
 
   const sortedPositions = (list: Position[]) => {
@@ -481,7 +421,7 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  {filteredEvents.length} / {feedEvents.length} events
+                  {filteredEvents.length} / {serverEvents.length} events
                 </span>
               </div>
             </CardHeader>
@@ -493,10 +433,10 @@ export default function DashboardPage() {
                       <Radio className="h-8 w-8 text-muted-foreground/50" />
                     </div>
                     <p className="text-sm font-medium text-muted-foreground">
-                      {feedEvents.length === 0 ? 'Waiting for trades...' : 'No events matching filters'}
+                      {serverEvents.length === 0 ? 'Waiting for trades...' : 'No events matching filters'}
                     </p>
                     <p className="text-xs text-muted-foreground/60 mt-1">
-                      {feedEvents.length === 0
+                      {serverEvents.length === 0
                         ? 'Add wallets and position changes will appear here'
                         : 'Try adjusting your search or filters'
                       }
@@ -565,7 +505,7 @@ export default function DashboardPage() {
                           </Badge>
 
                           <span className="text-[11px] text-muted-foreground tabular-nums min-w-[52px] text-right">
-                            {getTimeAgo(event.ts)}
+                            {getTimeAgo(event.createdAt)}
                           </span>
                         </div>
                       </div>

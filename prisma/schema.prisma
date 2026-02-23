@@ -16,6 +16,7 @@ model User {
   updatedAt      DateTime        @updatedAt
   settings       UserSettings?
   trackedWallets TrackedWallet[]
+  feedEvents     FeedEvent[]
 }
 
 model UserSettings {
@@ -38,7 +39,37 @@ model TrackedWallet {
   address   String
   nickname  String?
   createdAt DateTime @default(now())
+  snapshots PositionSnapshot[]
 
   @@unique([userId, address])
   @@index([userId])
+}
+
+model PositionSnapshot {
+  id             String   @id @default(cuid())
+  walletId       String
+  wallet         TrackedWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  coin           String
+  size           Float
+  entryPx        Float
+  positionValue  Float
+  updatedAt      DateTime @updatedAt
+
+  @@unique([walletId, coin])
+  @@index([walletId])
+}
+
+model FeedEvent {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  traderName    String
+  traderAddress String
+  market        String
+  side          String
+  qty           Float
+  notionalUsd   Float
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
